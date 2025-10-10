@@ -71,7 +71,7 @@ contract FallbackTest is Test {
 
         // STEP 3: Withdraw all funds
         console.log("\n[STEP 3] Withdrawing all funds...");
-        uint256 contractBalanceBefore = address(target).balance;
+        // uint256 contractBalanceBefore = address(target).balance;
         uint256 attackerBalanceBefore = attacker.balance;
 
         target.withdraw();
@@ -90,7 +90,7 @@ contract FallbackTest is Test {
     /**
      * @notice Test the impractical legitimate path
      */
-    function testImpracticalPath() public {
+    function testImpracticalPath() public view{
         console.log("\n=== Impractical Path Analysis ===");
 
         uint256 ownerContribution = target.contributions(deployer);
