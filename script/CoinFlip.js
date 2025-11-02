@@ -2,8 +2,8 @@ import { createWalletClient,createPublicClient,http } from "viem";
 import { sepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
-const ATTACK_ADDRESS = process.env.ATTACK_ADDRESS
-const COINFLIP_ADDRESS = process.env.COINFLIP_ADDRESS
+const ATTACK_ADDRESS = process.env.CoinFlipATTACK_ADDRESS
+const COINFLIP_ADDRESS = process.env.CoinFlip_ADDRESS
 
 const RPC_URL = process.env.sepolia_rpc
 const PRIVATE_KEY = process.env.PRIVATE_KEY

